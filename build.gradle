@@ -17,6 +17,8 @@ dependencies {
     implementation ('com.typesafe.akka:akka-stream-kafka_2.13:2.0.3')
     implementation 'org.apache.kafka:kafka-clients:2.0.1'
 
+    implementation group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
+
     testImplementation('org.springframework.boot:spring-boot-starter-test') {
         exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
     }
