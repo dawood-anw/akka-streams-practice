@@ -54,7 +54,7 @@ public class AkkaStreamsGraphPartitionedSource {
                 return 1;
             }
         });
-        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).map(msg -> {
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).async().map(msg -> {
             ewbCounter.addAndGet(1);
             System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
                     " partition : " + msg.record().partition() + " " + ewbCounter.get() + " " + Duration.between(startInstant, Instant.now()).getSeconds());
