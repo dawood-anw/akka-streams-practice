@@ -34,7 +34,7 @@ public class AkkaStreamsGraphPartitionedSource {
         Consumer.committablePartitionedSource(consumerSettings, Subscriptions.topics("taxilla-events"))
                 .mapAsyncUnordered(24, pair -> {
                     Source<ConsumerMessage.CommittableMessage<String, String>, NotUsed> source = pair.second();
-                    Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> flowShapeNotUsedGraph = prepareGraph(source);
+                    Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> flowShapeNotUsedGraph = prepareGraph();
                     return source.via(flowShapeNotUsedGraph)
                             .runWith(Committer.sink(committerSettings), actorSystem);
                 })
@@ -42,7 +42,7 @@ public class AkkaStreamsGraphPartitionedSource {
                 .run(actorSystem);
     }
 
-    private static Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> prepareGraph(Source<ConsumerMessage.CommittableMessage<String, String>, NotUsed> source) {
+    private static Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> prepareGraph() {
         Instant startInstant = Instant.now();
         AtomicInteger ewbCounter = new AtomicInteger(0);
         AtomicInteger regCounter = new AtomicInteger(0);
@@ -54,7 +54,6 @@ public class AkkaStreamsGraphPartitionedSource {
                 return 1;
             }
         });
-        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableMessage, NotUsed> flowCommitableMsg = Flow.of(ConsumerMessage.CommittableMessage.class);
         Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).async().map(msg -> {
             ewbCounter.addAndGet(1);
             System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
@@ -77,19 +76,15 @@ public class AkkaStreamsGraphPartitionedSource {
                 .map(param -> param);
 
 
-        return GraphDSL.create(flowCommitableMsg, (builder, aFlowCommitableMsg) -> {
+        return GraphDSL.create(builder -> {
             UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>
                     clusterPartitioningShape = builder.add(clusterPartitioning);
             UniformFanInShape<ConsumerMessage.CommittableOffset, ConsumerMessage.CommittableOffset> fanInShape = builder.add(Merge.create(2));
-            Outlet<ConsumerMessage.CommittableMessage<String, String>> out1 = clusterPartitioningShape.out(0);
-            Outlet<ConsumerMessage.CommittableMessage<String, String>> out2 = clusterPartitioningShape.out(1);
 
-            builder.from(aFlowCommitableMsg)
-                    .toFanOut(clusterPartitioningShape)
-                    .from(out1)
+            builder.from(clusterPartitioningShape.out(0))
                         .via(builder.add(partition1OutFlow))
                         .toInlet(fanInShape.in(0))
-                    .from(out2)
+                    .from(clusterPartitioningShape.out(2))
                         .via(builder.add(partition2OutFlow))
                         .toInlet(fanInShape.in(1));
 
