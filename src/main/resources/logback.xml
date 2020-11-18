@@ -27,6 +27,14 @@
         <appender-ref ref="FILE" />
     </appender>
 
+    <logger name="akka.*" level="DEBUG" additivity="false">
+        <appender-ref ref="akka-monitoring" />
+    </logger>
+
+    <logger name="com.lightbend.*" level="DEBUG" additivity="false">
+        <appender-ref ref="akka-monitoring" />
+    </logger>
+
     <root level="DEBUG">
         <appender-ref ref="ASYNC"/>
         <appender-ref ref="STDOUT"/>

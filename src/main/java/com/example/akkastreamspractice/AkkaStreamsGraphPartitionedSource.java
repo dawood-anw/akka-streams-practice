@@ -54,6 +54,7 @@ public class AkkaStreamsGraphPartitionedSource {
                 return 1;
             }
         });
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableMessage, NotUsed> flowCommitableMsg = Flow.of(ConsumerMessage.CommittableMessage.class);
         Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).async().map(msg -> {
             ewbCounter.addAndGet(1);
             System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
@@ -76,15 +77,14 @@ public class AkkaStreamsGraphPartitionedSource {
                 .map(param -> param);
 
 
-        return GraphDSL.create(builder -> {
-            SourceShape<ConsumerMessage.CommittableMessage<String, String>> sourceShape = builder.add(source);
+        return GraphDSL.create(flowCommitableMsg, (builder, aFlowCommitableMsg) -> {
             UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>
                     clusterPartitioningShape = builder.add(clusterPartitioning);
             UniformFanInShape<ConsumerMessage.CommittableOffset, ConsumerMessage.CommittableOffset> fanInShape = builder.add(Merge.create(2));
             Outlet<ConsumerMessage.CommittableMessage<String, String>> out1 = clusterPartitioningShape.out(0);
             Outlet<ConsumerMessage.CommittableMessage<String, String>> out2 = clusterPartitioningShape.out(1);
 
-            builder.from(sourceShape)
+            builder.from(aFlowCommitableMsg)
                     .toFanOut(clusterPartitioningShape)
                     .from(out1)
                         .via(builder.add(partition1OutFlow))
@@ -109,7 +109,7 @@ public class AkkaStreamsGraphPartitionedSource {
                 // The stage will delay stopping the internal actor to allow processing of messages already in the
                 // stream (required for successful committing). This can be set to 0 for streams using DrainingControl
                 .withStopTimeout(Duration.ofSeconds(0))
-                .withBootstrapServers("10.0.1.212:9092")
+                .withBootstrapServers("10.0.1.207:9092")
                 .withGroupId("test")
                 .withClientId("111")
                 .withProperties(defaultConsumerConfig());
