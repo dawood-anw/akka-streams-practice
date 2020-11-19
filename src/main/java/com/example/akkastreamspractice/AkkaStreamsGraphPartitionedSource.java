@@ -11,6 +11,7 @@ import akka.kafka.javadsl.Committer;
 import akka.kafka.javadsl.Consumer;
 import akka.stream.*;
 import akka.stream.javadsl.*;
+import com.typesafe.config.ConfigFactory;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 import java.time.Duration;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -25,7 +27,15 @@ import java.util.stream.Collectors;
 public class AkkaStreamsGraphPartitionedSource {
 
     public static void main(String[] args) {
-        ActorSystem actorSystem = ActorSystem.create();
+        Properties properties = new Properties();
+        properties.setProperty("akka.loglevel", "DEBUG");
+        properties.setProperty("akka.stdout-loglevel", "DEBUG");
+        properties.setProperty("akka.loggers.0", "akka.event.slf4j.Slf4jLogger");
+        properties.setProperty("akka.logging-filter", "akka.event.slf4j.Slf4jLoggingFilter");
+        properties.setProperty("akka.actor.provider", "akka.actor.LocalActorRefProvider");
+        properties.setProperty("akka.jvm-exit-on-fatal-error", "on");
+
+        ActorSystem actorSystem = ActorSystem.create("TestAkkaSystem", ConfigFactory.parseProperties(properties));
         ConsumerSettings<String, String> consumerSettings = getConsumerSettings(actorSystem);
         CommitterSettings committerSettings = CommitterSettings.create(actorSystem)
                 .withMaxBatch(100)
