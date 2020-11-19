@@ -30,8 +30,10 @@ public class AkkaStreamsGraphPartitionedSource {
         Properties properties = new Properties();
         properties.setProperty("akka.loglevel", "DEBUG");
         properties.setProperty("akka.stdout-loglevel", "DEBUG");
-        properties.setProperty("akka.loggers.0", "akka.event.slf4j.Slf4jLogger");
-        properties.setProperty("akka.logging-filter", "akka.event.slf4j.Slf4jLoggingFilter");
+        properties.setProperty("akka.log-dead-letters", "10");
+        properties.setProperty("akka.log-dead-letters-during-shutdown", "on");
+        //properties.setProperty("akka.loggers.0", "akka.event.slf4j.Slf4jLogger");
+        //properties.setProperty("akka.logging-filter", "akka.event.slf4j.Slf4jLoggingFilter");
         properties.setProperty("akka.actor.provider", "akka.actor.LocalActorRefProvider");
         properties.setProperty("akka.jvm-exit-on-fatal-error", "on");
 
@@ -53,37 +55,10 @@ public class AkkaStreamsGraphPartitionedSource {
     }
 
     private static Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> prepareGraph() {
-        Instant startInstant = Instant.now();
-        AtomicInteger ewbCounter = new AtomicInteger(0);
-        AtomicInteger regCounter = new AtomicInteger(0);
-        Graph<UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>, NotUsed> clusterPartitioning
-                = Partition.create(2, (Function<ConsumerMessage.CommittableMessage<String, String>, Integer>) tuple -> {
-            if (tuple.record().value().contains("ewb")) {
-                return 0;
-            } else {
-                return 1;
-            }
-        });
-        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).async().map(msg -> {
-            ewbCounter.addAndGet(1);
-            System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
-                    " partition : " + msg.record().partition() + " " + ewbCounter.get() + " " + Duration.between(startInstant, Instant.now()).getSeconds());
-            return msg.committableOffset();
-        });
-        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition2OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).groupBy(Integer.MAX_VALUE, msg -> msg.record().offset() % 10)
-                .mapAsync(1, msg -> CompletableFuture.supplyAsync(() -> {
-                            try {
-                                Thread.sleep(100);
-                            } catch (Exception ex) {
-                            }
-                            regCounter.addAndGet(1);
-                            System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
-                                    " partition : " + msg.record().partition() + " " + regCounter.get() + " " + Duration.between(startInstant, Instant.now()).getSeconds());
-                            return msg.record().offset();
-                        }).thenApply(resp -> msg.committableOffset())
-                )
-                .mergeSubstreams();
-
+        Graph<UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>, NotUsed>
+                clusterPartitioning = fanOutBasedOnCluster();
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = flowOfIgnoreMessages();
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition2OutFlow = flowOfMessagesToBeProcessed();
 
         return GraphDSL.create(builder -> {
             UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>
@@ -111,6 +86,50 @@ public class AkkaStreamsGraphPartitionedSource {
 
             return FlowShape.of(clusterPartitioningShape.in(), orderOffsetsFlowShape.out());
         });
+    }
+
+    private static Graph<UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>, NotUsed> fanOutBasedOnCluster() {
+        Graph<UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>, NotUsed> clusterPartitioning
+                = Partition.create(2, (Function<ConsumerMessage.CommittableMessage<String, String>, Integer>) tuple -> {
+            if (tuple.record().value().contains("ewb")) {
+                return 0;
+            } else {
+                return 1;
+            }
+        });
+        return clusterPartitioning;
+    }
+
+    private static Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> flowOfMessagesToBeProcessed() {
+        Instant startInstant = Instant.now();
+        AtomicInteger regCounter = new AtomicInteger(0);
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition2OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class)
+                .groupBy(Integer.MAX_VALUE, msg -> msg.record().offset() % 10)
+                .mapAsync(1, msg -> CompletableFuture.supplyAsync(() -> {
+                            try {
+                                Thread.sleep(100);
+                            } catch (Exception ex) {
+                            }
+                            regCounter.addAndGet(1);
+                            System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
+                                    " partition : " + msg.record().partition() + " " + regCounter.get() + " " + Duration.between(startInstant, Instant.now()).getSeconds());
+                            return msg.record().offset();
+                        }).thenApply(resp -> msg.committableOffset())
+                )
+                .mergeSubstreams();
+        return partition2OutFlow;
+    }
+
+    private static Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> flowOfIgnoreMessages() {
+        Instant instant = Instant.now();
+        AtomicInteger ewbCounter = new AtomicInteger(0);
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).async().map(msg -> {
+            ewbCounter.addAndGet(1);
+            System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
+                    " partition : " + msg.record().partition() + " " + ewbCounter.get() + " " + Duration.between(instant, Instant.now()).getSeconds());
+            return msg.committableOffset();
+        });
+        return partition1OutFlow;
     }
 
     public static ConsumerSettings<String, String> getConsumerSettings(ActorSystem actorSystem) {
