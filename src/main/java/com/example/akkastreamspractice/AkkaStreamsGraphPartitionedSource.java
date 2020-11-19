@@ -72,8 +72,7 @@ public class AkkaStreamsGraphPartitionedSource {
                             return msg.record().offset();
                         }).thenApply(resp -> msg.committableOffset())
                 )
-                .mergeSubstreams()
-                .map(param -> param);
+                .mergeSubstreams();
 
 
         return GraphDSL.create(builder -> {
@@ -88,8 +87,14 @@ public class AkkaStreamsGraphPartitionedSource {
                         .via(builder.add(partition2OutFlow))
                         .toInlet(fanInShape.in(1));
 
-            Flow<ConsumerMessage.CommittableOffset, ConsumerMessage.CommittableOffset, NotUsed> orderOffsetsFlow = Flow.fromFunction((ConsumerMessage.CommittableOffset offset) -> offset).grouped(100)
-                    .map(offsets -> offsets.stream().sorted(Comparator.comparingLong(offset -> offset.partitionOffset()._2())).collect(Collectors.toList()))
+            Flow<ConsumerMessage.CommittableOffset, ConsumerMessage.CommittableOffset, NotUsed> orderOffsetsFlow =
+                    Flow.fromFunction((ConsumerMessage.CommittableOffset offset) -> offset)
+                            .grouped(100)
+                    .map(offsets ->
+                            offsets.stream()
+                                    .sorted(Comparator.comparingLong(offset -> offset.partitionOffset()._2()))
+                                    .collect(Collectors.toList())
+                    )
                     .mapConcat(offsets -> offsets);
             FlowShape<ConsumerMessage.CommittableOffset, ConsumerMessage.CommittableOffset> orderOffsetsFlowShape = builder.add(orderOffsetsFlow);
             builder.from(fanInShape.out()).toInlet(orderOffsetsFlowShape.in());
