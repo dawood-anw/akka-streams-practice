@@ -68,7 +68,7 @@ public class AkkaStreamsGraphPartitionedSource {
             builder.from(clusterPartitioningShape.out(0))
                         .via(builder.add(partition1OutFlow))
                         .toInlet(fanInShape.in(0))
-                    .from(clusterPartitioningShape.out(2))
+                    .from(clusterPartitioningShape.out(1))
                         .via(builder.add(partition2OutFlow))
                         .toInlet(fanInShape.in(1));
 
