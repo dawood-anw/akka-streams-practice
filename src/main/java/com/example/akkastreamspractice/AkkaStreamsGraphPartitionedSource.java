@@ -32,8 +32,8 @@ public class AkkaStreamsGraphPartitionedSource {
         properties.setProperty("akka.stdout-loglevel", "DEBUG");
         properties.setProperty("akka.log-dead-letters", "10");
         properties.setProperty("akka.log-dead-letters-during-shutdown", "on");
-        //properties.setProperty("akka.loggers.0", "akka.event.slf4j.Slf4jLogger");
-        //properties.setProperty("akka.logging-filter", "akka.event.slf4j.Slf4jLoggingFilter");
+        properties.setProperty("akka.loggers.0", "akka.event.slf4j.Slf4jLogger");
+        properties.setProperty("akka.logging-filter", "akka.event.slf4j.Slf4jLoggingFilter");
         properties.setProperty("akka.actor.provider", "akka.actor.LocalActorRefProvider");
         properties.setProperty("akka.jvm-exit-on-fatal-error", "on");
 
@@ -44,7 +44,7 @@ public class AkkaStreamsGraphPartitionedSource {
                 .withMaxInterval(Duration.ofSeconds(30));
 
         Consumer.committablePartitionedSource(consumerSettings, Subscriptions.topics("taxilla-events"))
-                .mapAsyncUnordered(24, pair -> {
+                .mapAsyncUnordered(40, pair -> {
                     Source<ConsumerMessage.CommittableMessage<String, String>, NotUsed> source = pair.second();
                     Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> flowShapeNotUsedGraph = prepareGraph();
                     return source.via(flowShapeNotUsedGraph)
@@ -57,7 +57,7 @@ public class AkkaStreamsGraphPartitionedSource {
     private static Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> prepareGraph() {
         Graph<UniformFanOutShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableMessage<String, String>>, NotUsed>
                 clusterPartitioning = fanOutBasedOnCluster();
-        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = flowOfIgnoreMessages();
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = flowOfMessagesToBeIgnored();
         Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition2OutFlow = flowOfMessagesToBeProcessed();
 
         return GraphDSL.create(builder -> {
@@ -75,12 +75,12 @@ public class AkkaStreamsGraphPartitionedSource {
             Flow<ConsumerMessage.CommittableOffset, ConsumerMessage.CommittableOffset, NotUsed> orderOffsetsFlow =
                     Flow.fromFunction((ConsumerMessage.CommittableOffset offset) -> offset)
                             .grouped(100)
-                    .map(offsets ->
-                            offsets.stream()
-                                    .sorted(Comparator.comparingLong(offset -> offset.partitionOffset()._2()))
-                                    .collect(Collectors.toList())
-                    )
-                    .mapConcat(offsets -> offsets);
+                        .map(offsets ->
+                                offsets.stream()
+                                        .sorted(Comparator.comparingLong(offset -> offset.partitionOffset()._2()))
+                                        .collect(Collectors.toList())
+                        )
+                        .mapConcat(offsets -> offsets);
             FlowShape<ConsumerMessage.CommittableOffset, ConsumerMessage.CommittableOffset> orderOffsetsFlowShape = builder.add(orderOffsetsFlow);
             builder.from(fanInShape.out()).toInlet(orderOffsetsFlowShape.in());
 
@@ -104,6 +104,8 @@ public class AkkaStreamsGraphPartitionedSource {
         Instant startInstant = Instant.now();
         AtomicInteger regCounter = new AtomicInteger(0);
         Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition2OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class)
+                .log("flowOfMessagesToBeProcessed")
+                .withAttributes(Attributes.createLogLevels(Attributes.logLevelDebug()))
                 .groupBy(Integer.MAX_VALUE, msg -> msg.record().offset() % 10)
                 .mapAsync(1, msg -> CompletableFuture.supplyAsync(() -> {
                             try {
@@ -120,10 +122,13 @@ public class AkkaStreamsGraphPartitionedSource {
         return partition2OutFlow;
     }
 
-    private static Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> flowOfIgnoreMessages() {
+    private static Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> flowOfMessagesToBeIgnored() {
         Instant instant = Instant.now();
         AtomicInteger ewbCounter = new AtomicInteger(0);
-        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class).async().map(msg -> {
+        Flow<ConsumerMessage.CommittableMessage, ConsumerMessage.CommittableOffset, NotUsed> partition1OutFlow = Flow.of(ConsumerMessage.CommittableMessage.class)
+                .log("flowOfMessagesTobeIgnored")
+                .withAttributes(Attributes.createLogLevels(Attributes.logLevelDebug()))
+                .map(msg -> {
             ewbCounter.addAndGet(1);
             System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
                     " partition : " + msg.record().partition() + " " + ewbCounter.get() + " " + Duration.between(instant, Instant.now()).getSeconds());

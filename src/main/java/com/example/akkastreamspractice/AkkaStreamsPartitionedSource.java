@@ -62,7 +62,7 @@ public class AkkaStreamsPartitionedSource {
                 // The stage will delay stopping the internal actor to allow processing of messages already in the
                 // stream (required for successful committing). This can be set to 0 for streams using DrainingControl
                 .withStopTimeout(Duration.ofSeconds(0))
-                .withBootstrapServers("10.0.1.212:9092")
+                .withBootstrapServers("10.0.1.207:9092")
                 .withGroupId("test")
                 .withClientId("111")
                 .withProperties(defaultConsumerConfig());
