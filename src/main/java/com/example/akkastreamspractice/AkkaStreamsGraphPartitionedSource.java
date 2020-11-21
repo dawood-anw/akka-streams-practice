@@ -113,8 +113,10 @@ public class AkkaStreamsGraphPartitionedSource {
                             } catch (Exception ex) {
                             }
                             regCounter.addAndGet(1);
-                            System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
-                                    " partition : " + msg.record().partition() + " " + regCounter.get() + " " + Duration.between(startInstant, Instant.now()).getSeconds());
+                            if(regCounter.get() % 100 == 0) {
+                                System.out.println("Regular group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
+                                        " partition : " + msg.record().partition() + " " + regCounter.get() + " " + Duration.between(startInstant, Instant.now()).getSeconds());
+                            }
                             return msg.record().offset();
                         }).thenApply(resp -> msg.committableOffset())
                 )
@@ -129,11 +131,13 @@ public class AkkaStreamsGraphPartitionedSource {
                 .log("flowOfMessagesTobeIgnored")
                 .withAttributes(Attributes.createLogLevels(Attributes.logLevelDebug()))
                 .map(msg -> {
-            ewbCounter.addAndGet(1);
-            System.out.println("group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
-                    " partition : " + msg.record().partition() + " " + ewbCounter.get() + " " + Duration.between(instant, Instant.now()).getSeconds());
-            return msg.committableOffset();
-        });
+                    ewbCounter.addAndGet(1);
+                    if(ewbCounter.get() % 100 == 0) {
+                        System.out.println("Ewb group " + msg.record().offset() % 10 + " offset : " + msg.record().offset() +
+                                " partition : " + msg.record().partition() + " " + ewbCounter.get() + " " + Duration.between(instant, Instant.now()).getSeconds());
+                    }
+                    return msg.committableOffset();
+                });
         return partition1OutFlow;
     }
 
