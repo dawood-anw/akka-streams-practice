@@ -44,11 +44,10 @@ public class AkkaStreamsGraphSource {
                 .withMaxInterval(Duration.ofSeconds(30));
 
         Graph<FlowShape<ConsumerMessage.CommittableMessage<String, String>, ConsumerMessage.CommittableOffset>, NotUsed> flowShapeNotUsedGraph = prepareGraph();
-
         Consumer.committableSource(consumerSettings, Subscriptions.topics("taxilla-events"))
                     .via(flowShapeNotUsedGraph)
-                    .runWith(Committer.sink(committerSettings), actorSystem)
-                .toMat(Sink.ignore(), Consumer::createDrainingControl)
+                .toMat(Committer.sink(committerSettings), Keep.both())
+                .mapMaterializedValue(Consumer::createDrainingControl)
                 .run(actorSystem);
     }
 
